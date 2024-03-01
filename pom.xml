@@ -31,6 +31,12 @@
             <organization>UltiKits</organization>
             <timezone>+10</timezone>
         </developer>
+        <developer>
+            <name>qianmo</name>
+            <email>qianmo2233@gmail.com</email>
+            <organization>UltiKits</organization>
+            <timezone>+8</timezone>
+        </developer>
     </developers>
 
     <properties>
@@ -38,6 +44,9 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <gui.version>4.3.0</gui.version>
         <hutool.version>5.8.25</hutool.version>
+        <env.api.url>https://api.ultikits.com</env.api.url>
+        <env.oss.url>https://ultitools.oss-cn-shanghai.aliyuncs.com</env.oss.url>
+        <env.lib.path>/lib/</env.lib.path>
     </properties>
 
     <distributionManagement>
@@ -358,6 +367,17 @@
             <groupId>com.zaxxer</groupId>
             <artifactId>HikariCP</artifactId>
             <version>5.1.0</version>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/de.vandermeer/asciitable -->
+        <dependency>
+            <groupId>de.vandermeer</groupId>
+            <artifactId>asciitable</artifactId>
+            <version>0.3.2</version>
+        </dependency>
+        <dependency>
+            <groupId>me.tongfei</groupId>
+            <artifactId>progressbar</artifactId>
+            <version>0.10.0</version>
         </dependency>
     </dependencies>
 

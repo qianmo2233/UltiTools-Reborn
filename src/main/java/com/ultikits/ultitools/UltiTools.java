@@ -9,12 +9,14 @@ import com.ultikits.ultitools.interfaces.VersionWrapper;
 import com.ultikits.ultitools.interfaces.impl.data.mysql.MysqlDataStore;
 import com.ultikits.ultitools.listeners.PlayerJoinListener;
 import com.ultikits.ultitools.manager.*;
-import com.ultikits.ultitools.utils.HttpDownloadUtils;
 import com.ultikits.ultitools.utils.Metrics;
 import com.ultikits.ultitools.utils.PluginInitiationUtils;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
+import me.tongfei.progressbar.DelegatingProgressBarConsumer;
+import me.tongfei.progressbar.ProgressBar;
+import me.tongfei.progressbar.ProgressBarBuilder;
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.InvalidConfigurationException;
@@ -24,23 +26,16 @@ import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.*;
-import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.security.CodeSource;
-import java.security.ProtectionDomain;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
 
-import static com.ultikits.ultitools.utils.CommonUtils.getUltiToolsUUID;
-import static com.ultikits.ultitools.utils.PluginInitiationUtils.loginAccount;
-import static com.ultikits.ultitools.utils.PluginInitiationUtils.stopWebsocket;
-import static com.ultikits.ultitools.utils.VersionUtils.getUltiToolsNewestVersion;
+import static com.ultikits.ultitools.utils.PluginInitiationUtils.*;
 
 /**
  * UltiTools plugin main class.
@@ -116,8 +111,10 @@ public final class UltiTools extends JavaPlugin implements Localized {
 
     @Override
     public void onLoad() {
-        saveDefaultConfig();
+        runTestProgressBar();
         ultiTools = this;
+        printBanner();
+        saveDefaultConfig();
         // Plugin classloader initialization
         URL serverJar = getServerJar();
         try {
@@ -129,14 +126,14 @@ public final class UltiTools extends JavaPlugin implements Localized {
         } catch (URISyntaxException e) {
             throw new RuntimeException(e);
         }
-        downloadRequiredDependencies();
+        needLoadLib = downloadRequiredDependencies();
     }
 
     @SneakyThrows
     @Override
     public void onEnable() {
         // Load all lib
-        URLClassLoader urlClassLoader = new URLClassLoader(getLibs(), getClassLoader());
+        URLClassLoader urlClassLoader = new URLClassLoader(PluginInitiationUtils.getLibs(), getClassLoader());
         // External bukkit libraries initialization
         try {
             dependenceManagers = new DependenceManagers(this, urlClassLoader);
@@ -144,9 +141,7 @@ public final class UltiTools extends JavaPlugin implements Localized {
             needLoadLib = true;
         }
         if (needLoadLib) {
-            getServer().getScheduler().scheduleSyncRepeatingTask(this, () -> {
-                getLogger().log(Level.WARNING, "UltiTools初始化完成，但是无法加载依赖，请重启服务端！");
-            }, 0, 20 * 30);
+            getServer().getScheduler().scheduleSyncRepeatingTask(this, () -> getLogger().log(Level.WARNING, "UltiTools初始化完成，但是无法加载依赖，请重启服务端！"), 0, 20 * 30);
             return;
         }
         // Language initialization
@@ -193,6 +188,7 @@ public final class UltiTools extends JavaPlugin implements Localized {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+        @SuppressWarnings("unused")
         Metrics metrics = new Metrics(this, 8652);
 
         // Embed web server initialization & Account login
@@ -219,38 +215,17 @@ public final class UltiTools extends JavaPlugin implements Localized {
                 ServicePriority.Normal
         );
 
+        //noinspection deprecation
         getCommandManager().register(new UltiToolsCommands());
+        //noinspection deprecation
         getCommandManager().register(new PluginInstallCommands());
 
         Bukkit.getServer().getPluginManager().registerEvents(new PlayerJoinListener(), this);
 
-        boolean finalLoginSuccess = loginSuccess;
-        getServer().getScheduler().scheduleSyncDelayedTask(this, () -> {
-            if (loginRequired) {
-                if (finalLoginSuccess) {
-                    getLogger().log(Level.INFO, String.format(i18n("UltiKits账户 %s 登录成功！"), username));
-                } else {
-                    getLogger().log(Level.WARNING, String.format(i18n("UltiKits账户 %s 登录失败！云端相关功能将无法使用！"), username));
-                }
-            }
-            if (getConfig().getBoolean("web-editor.enable")) {
-                getLogger().log(Level.INFO, i18n("网页编辑器已启动！访问地址：https://panel.ultikits.com/manger"));
-            } else {
-                getLogger().log(Level.INFO, i18n("网页编辑器未启用！"));
-            }
-            getLogger().log(Level.INFO, String.format(i18n("数据存储方式：%s"), dataStore.getStoreType()));
-            String ultiToolsNewestVersion = getUltiToolsNewestVersion();
-            String currentVersion = getEnv().getString("version");
-            getLogger().log(Level.INFO, String.format(i18n("UltiTools-API已启动，当前版本：%s"), getEnv().getString("version")));
-            getLogger().log(Level.INFO, String.format(i18n("服务器UUID: %s"), getUltiToolsUUID()));
-            getLogger().log(Level.INFO, i18n("正在检查版本更新..."));
-            if (dependenceManagers.getVersionComparator().compare(currentVersion, ultiToolsNewestVersion) < 0) {
-                getLogger().log(Level.INFO, String.format(i18n("UltiTools-API有新版本 %s 可用，请及时更新！"), ultiToolsNewestVersion));
-                getLogger().log(Level.INFO, String.format(i18n("下载地址：%s"), "https://github.com/UltiKits/UltiTools-Reborn/releases/latest"));
-                return;
-            }
-            getLogger().log(Level.INFO, i18n("UltiTools-API已是最新版本！"));
-        });
+        getLogger().log(Level.INFO, String.format(i18n("数据存储方式：%s"), dataStore.getStoreType()));
+
+        checkAccountLogin(loginRequired, loginSuccess, username);
+        checkPluginVersion();
     }
 
     @Override
@@ -314,7 +289,7 @@ public final class UltiTools extends JavaPlugin implements Localized {
      * @param filename the name of the file resource
      * @return the input stream for the file resource, or null if an I/O error occurs
      */
-    private InputStream getFileResource(String filename) {
+    public InputStream getFileResource(String filename) {
         try {
             return Objects.requireNonNull(this.getClass().getClassLoader().getResource(filename)).openStream();
         } catch (IOException ex) {
@@ -340,111 +315,30 @@ public final class UltiTools extends JavaPlugin implements Localized {
         return registration.getProvider();
     }
 
-    /**
-     * Get server jar file URL.
-     * <br>
-     * 获取服务器Jar文件URL。
-     *
-     * @return Server jar file URL <br> 服务器Jar文件URL
-     */
-    public URL getServerJar() {
-        ProtectionDomain protectionDomain = Bukkit.class.getProtectionDomain();
-        CodeSource codeSource = protectionDomain.getCodeSource();
-        if (codeSource == null) {
-            return null;
-        }
-        if (codeSource.getLocation().toString().startsWith("union:")) {
-            String replace = codeSource.getLocation().toString().replace("union:", "file:").split("%")[0];
-            try {
-                return new URL(replace);
-            } catch (MalformedURLException e) {
-                e.printStackTrace();
+    private void runTestProgressBar() {
+        DelegatingProgressBarConsumer progressBarConsumer =
+                new DelegatingProgressBarConsumer(System.console() != null ? System.console().writer()::print : this.getLogger()::info);
+        try(ProgressBar pb = new ProgressBarBuilder()
+                .setInitialMax(100)
+                .setTaskName("Test")
+                .setConsumer(progressBarConsumer)
+                .setUpdateIntervalMillis(10)
+                .build()) {
+            for (int i = 0; i < 100; i++) {
+
+                if (System.console() != null) {
+                    pb.step();
+                    System.console().flush();
+                    Thread.sleep(1000);
+                    System.console().writer().print("\033[K\r");
+                    System.console().flush();
+                } else {
+                    pb.step();
+                    Thread.sleep(1000);
+                }
             }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
-        return codeSource.getLocation();
-    }
-
-    private URL[] getLibs() {
-        File libDir = new File(getDataFolder(), "lib");
-        if (!libDir.exists()) {
-            libDir.mkdirs();
-        }
-        File[] libFiles = libDir.listFiles();
-        if (libFiles == null) {
-            return new URL[]{getServerJar()};
-        }
-
-        List<File> files = new ArrayList<>(Arrays.asList(libFiles));
-        File pluginsFolder = getDataFolder().getParentFile();
-        for (File file : Objects.requireNonNull(pluginsFolder.listFiles())) {
-            if (file.getName().endsWith(".jar")) {
-                files.add(file);
-            }
-        }
-
-        File pluginDir = new File(getDataFolder(), "plugins");
-        if (!pluginDir.exists()) {
-            pluginDir.mkdirs();
-        }
-        File[] pluginFiles = pluginDir.listFiles();
-        if (pluginFiles != null) {
-            files.addAll(Arrays.asList(pluginFiles));
-        }
-
-        URL[] urls = new URL[files.size() + 1];
-        for (int i = 0; i < files.size(); i++) {
-            try {
-                urls[i] = files.get(i).toURI().toURL();
-            } catch (MalformedURLException e) {
-                e.printStackTrace();
-            }
-        }
-        urls[files.size()] = getServerJar();
-        return urls;
-    }
-
-    /**
-     * Download required dependencies.
-     * <br>
-     * 下载必要的依赖。
-     */
-    private void downloadRequiredDependencies() {
-        YamlConfiguration env = UltiTools.getEnv();
-        List<String> missingLib = env.getStringList("libraries")
-                .stream()
-                .map(lib -> new File(UltiTools.getInstance().getDataFolder() + "/lib", lib))
-                .filter(file -> !file.exists()).map(File::getName)
-                .collect(Collectors.toList());
-        if (missingLib.isEmpty()) {
-            return;
-        }
-        getLogger().log(Level.INFO, "Missing required libraries，trying to download...");
-        getLogger().log(Level.INFO, "If have problems in downloading，you can download full version.");
-        for (int i = 0; i < missingLib.size(); i++) {
-            String name = missingLib.get(i);
-            String url = env.getString("oss-url") + env.getString("lib-path") + name;
-            double i1 = (double) i / missingLib.size();
-            int percentage = (int) (i1 * 100);
-            printLoadingBar(percentage);
-            HttpDownloadUtils.download(url, name, UltiTools.getInstance().getDataFolder() + "/lib");
-            needLoadLib = true;
-        }
-        printLoadingBar(100);
-        getLogger().log(Level.INFO, "All required libraries have been downloaded.");
-    }
-
-    private void printLoadingBar(final int percentage) {
-        StringBuilder loadingBar = new StringBuilder("[");
-        int progress = percentage / 10;
-        for (int i = 0; i < progress; i++) {
-            loadingBar.append("*");
-        }
-        for (int i = progress; i < 10; i++) {
-            loadingBar.append("-");
-        }
-        loadingBar.append("] ");
-        loadingBar.append(percentage);
-        loadingBar.append("%");
-        Bukkit.getLogger().log(Level.INFO, "[UltiTools]Downloading: " + loadingBar);
     }
 }

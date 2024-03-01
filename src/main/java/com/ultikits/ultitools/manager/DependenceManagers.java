@@ -26,6 +26,7 @@ public class DependenceManagers {
         initAdventure(plugin);
         initSpringContext();
         initInventoryAPI(plugin);
+        plugin.getLogger().info("Libraries initialized.");
     }
 
     /**
